@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
 //import org.graphstream.graph.Graph;
@@ -31,7 +32,8 @@ public class Tree {
 
     private List<Node> nodes;
     private int maxChildNum = 0;
-    
+    private double[] alphaOnEachStep;
+
 
     public Tree() {
         nodes = new ArrayList<>();
@@ -43,7 +45,7 @@ public class Tree {
 
     void generate(int maxChildNum, int nodesNum, TreeType type) {
         this.maxChildNum = maxChildNum;
-
+        alphaOnEachStep = new double[nodesNum];
         Random random = new Random();
 
         do {
@@ -54,16 +56,18 @@ public class Tree {
 
                 if (size() == 0) {
                     nodes.add(new Node(null));
+                    alphaOnEachStep[0] = 1;
                 }
 
                 if (current == size()) {
                     break;
                 }
+
                 int childNum = 0;
                 if (type == TreeType.IRREGULAR) {
                     childNum = random.nextInt(maxChildNum);
                 } else if (type == TreeType.REGULAR) {
-                    childNum = random.nextInt(maxChildNum - 1) + 1;
+                    childNum = maxChildNum - 1;
                 }
                 Node buffer = nodes.get(current);
                 for (int i = 0; i < childNum; i++) {
@@ -72,7 +76,9 @@ public class Tree {
                     }
                     Node child = new Node(buffer);
                     buffer.addChildren(new Node(buffer));
+
                     nodes.add(child);
+                    alphaOnEachStep[size() - 1] = alpha();
                 }
                 current++;
             }
@@ -81,7 +87,40 @@ public class Tree {
 
     void clear() {
         nodes.clear();
+        Arrays.fill(alphaOnEachStep, 0);
     }
+
+    public double[] getAlphaOnEachStep() {
+        return alphaOnEachStep;
+    }
+
+    public double expectedVertexValue() {
+
+        double expVal = 0;
+        int[] children = getChildrenAmount();
+        return IntStream.range(0, maxChildNum)
+                .mapToDouble(num -> num * (double) children[num] / size())
+                .sum();
+    }
+
+    public String getSuspendedNodes () {
+        StringBuilder sb = new StringBuilder();
+        for (Node n: nodes) {
+            if (!n.hasChildren()) {
+                sb.append(n).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    public double disperse() {
+
+        int[] children = getChildrenAmount();
+        double x2 = IntStream.range(0, maxChildNum).mapToDouble(num -> (double) num * num * children[num] / size()).sum();
+
+        return x2 - Math.pow(expectedVertexValue(), 2);
+    }
+
 
     public int suspendedNodesNum() {
         if (size() == 0) {
@@ -99,6 +138,8 @@ public class Tree {
     }
 
     public double alpha() {
+        // (m - 1) / (m - 2);
+        // m = 3: alpha = 2
         return size() / (double) suspendedNodesNum();
     }
 
@@ -107,7 +148,7 @@ public class Tree {
         StringBuilder sb = new StringBuilder();
 
         for (Node n : nodes) {
-            sb.append(n.toString());
+            sb.append(n.toString()).append("\n");
         }
         return sb.toString();
     }
@@ -154,13 +195,9 @@ public class Tree {
     }
 
     public int[] showHistogram() {
-        int[] childrenAmount = new int[maxChildNum];
-        Arrays.fill(childrenAmount, 0);
-        for (Node n : nodes) {
-            childrenAmount[n.children.size()]++;
-        }
 
         int[] xarray = IntStream.range(0, maxChildNum).toArray();
+        int[] yarray = getChildrenAmount();
         CategoryChart chart = new CategoryChartBuilder().width(640).height(480)
                 .title("Гистограмма")
                 .xAxisTitle("Число дочерних узлов")
@@ -171,9 +208,17 @@ public class Tree {
         chart.getStyler().setAvailableSpaceFill(0.99);
         chart.getStyler().setOverlapped(true);
 
-        chart.addSeries("Число встреченных узлов", xarray, childrenAmount);
+        chart.addSeries("Число встреченных узлов", xarray, yarray);
         new SwingWrapper<>(chart).displayChart();
 
+        return yarray;
+    }
+
+    public int[] getChildrenAmount() {
+        int[] childrenAmount = new int[maxChildNum];
+        for (Node n : nodes) {
+            childrenAmount[n.children.size()]++;
+        }
         return childrenAmount;
     }
 
@@ -200,7 +245,7 @@ public class Tree {
             if (this.parent == null) {
                 return 1;
             } else {
-                return parent.getLevel() + 1;
+                return this.parent.getLevel() + 1;
             }
         }
 
@@ -214,7 +259,7 @@ public class Tree {
 
         @Override
         public String toString() {
-            return String.format("%d-%d level %d \n", num, parentNum, getLevel());
+            return String.format("%d-%d level %d", num, parentNum, getLevel());
         }
     }
 
